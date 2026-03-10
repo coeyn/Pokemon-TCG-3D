@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Poke TCG 3D - Prototype AR ArUco</title>
+    <title>Poke TCG 3D - Prototype AR AprilTag</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./style.css" />
     <script type="importmap">
@@ -15,6 +15,7 @@
       }
     </script>
     <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+    <script src="./vendor/apriltag.js"></script>
   </head>
   <body>
     <div id="app">
@@ -28,7 +29,7 @@
         </select>
         <button id="start-btn">Demarrer la camera</button>
         <div id="status">Etat: en attente</div>
-        <div id="qr-status">ArUco detectes: aucun</div>
+        <div id="qr-status">AprilTag detectes: aucun</div>
       </div>
     </div>
 

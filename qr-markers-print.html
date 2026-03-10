@@ -3,251 +3,81 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pokemon TCG 3D - ArUco Markers</title>
+    <title>Pokemon TCG 3D - AprilTag Guide</title>
     <style>
-      :root {
-        --marker-size-mm: 40;
-      }
-
       html,
       body {
         margin: 0;
-        padding: 0;
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
         background: #f8fafc;
         color: #0f172a;
       }
 
-      .toolbar {
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        padding: 10px 14px;
-        background: #0f172a;
-        color: #e2e8f0;
-      }
-
-      .toolbar button {
-        border: 0;
-        border-radius: 8px;
-        padding: 8px 12px;
-        cursor: pointer;
-        font-weight: 600;
-        background: #22c55e;
-        color: #052e16;
-      }
-
-      .sheet {
-        box-sizing: border-box;
-        width: 210mm;
-        min-height: 297mm;
+      main {
+        max-width: 860px;
         margin: 0 auto;
-        padding: 14mm;
+        padding: 24px 16px 48px;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+      }
+
+      .card {
         background: #fff;
+        border: 1px solid #dbe2ea;
+        border-radius: 12px;
+        padding: 14px;
+        margin: 10px 0;
       }
 
-      .title {
-        margin: 0 0 4mm;
-        font-size: 18px;
+      a {
+        color: #0369a1;
+        font-weight: 600;
       }
 
-      .hint {
-        margin: 0 0 4mm;
-        font-size: 12px;
-        color: #334155;
-      }
-
-      .status {
-        margin: 0 0 10mm;
-        font-size: 12px;
-        color: #92400e;
-      }
-
-      .grid {
+      .map {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 16mm;
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+        gap: 12px;
       }
 
-      .marker {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2mm;
-      }
-
-      .marker-label {
-        font-weight: 700;
-        font-size: 14px;
-      }
-
-      .marker-box {
-        width: calc(var(--marker-size-mm) * 1mm);
-        height: calc(var(--marker-size-mm) * 1mm);
-        border: 1px dashed #64748b;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-      }
-
-      .marker-canvas {
-        width: 100%;
-        height: 100%;
-        display: block;
-      }
-
-      .place {
-        font-size: 12px;
-        color: #475569;
-      }
-
-      @media print {
-        .toolbar {
-          display: none;
-        }
-
-        body {
-          background: #fff;
-        }
-
-        .sheet {
-          margin: 0;
-          padding: 10mm;
-          width: auto;
-          min-height: auto;
-        }
+      .slot {
+        border: 1px dashed #94a3b8;
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+        background: #f8fafc;
       }
     </style>
-    <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   </head>
   <body>
-    <div class="toolbar">
-      <button id="print-btn" type="button">Imprimer</button>
-      <span>Imprime a 100% (sans "Ajuster a la page").</span>
-    </div>
-
-    <main class="sheet">
-      <h1 class="title">Pokemon TCG 3D - ArUco de calibration</h1>
-      <p class="hint">
-        Decoupe les 4 marqueurs puis place-les aux coins du playmat:
-        ID 0 (haut gauche), ID 1 (haut droit), ID 2 (bas droit), ID 3 (bas gauche).
+    <main>
+      <h1>Generation des marqueurs AprilTag</h1>
+      <p>
+        Le projet attend des tags de famille <strong>tag36h11</strong> avec IDs
+        <strong>0, 1, 2, 3</strong>.
       </p>
-      <p class="status" id="render-status">Generation des marqueurs...</p>
 
-      <section class="grid">
-        <article class="marker">
-          <div class="marker-label">ID 0</div>
-          <div class="marker-box"><canvas class="marker-canvas" id="aruco-0" width="360" height="360"></canvas></div>
-          <div class="place">Haut gauche</div>
-        </article>
-        <article class="marker">
-          <div class="marker-label">ID 1</div>
-          <div class="marker-box"><canvas class="marker-canvas" id="aruco-1" width="360" height="360"></canvas></div>
-          <div class="place">Haut droit</div>
-        </article>
-        <article class="marker">
-          <div class="marker-label">ID 3</div>
-          <div class="marker-box"><canvas class="marker-canvas" id="aruco-3" width="360" height="360"></canvas></div>
-          <div class="place">Bas gauche</div>
-        </article>
-        <article class="marker">
-          <div class="marker-label">ID 2</div>
-          <div class="marker-box"><canvas class="marker-canvas" id="aruco-2" width="360" height="360"></canvas></div>
-          <div class="place">Bas droit</div>
-        </article>
+      <section class="card">
+        <p>Option recommandee (simple):</p>
+        <p>
+          <a href="https://tools.limelightvision.io/apriltag-generator" target="_blank" rel="noreferrer">
+            Ouvrir AprilTag Generator
+          </a>
+        </p>
+        <p>Reglages conseilles: famille <code>tag36h11</code>, taille 40 mm, impression a 100%.</p>
+      </section>
+
+      <section class="card">
+        <p>Placement sur le playmat:</p>
+        <div class="map">
+          <div class="slot">Haut gauche<br />ID 0</div>
+          <div class="slot">Haut droit<br />ID 1</div>
+          <div class="slot">Bas gauche<br />ID 3</div>
+          <div class="slot">Bas droit<br />ID 2</div>
+        </div>
       </section>
     </main>
-
-    <script>
-      const statusEl = document.getElementById("render-status");
-      const MARKER_SIZE_PX = 360;
-      const DICT_NAME = "DICT_4X4_50";
-      const markerDefs = [
-        { canvasId: "aruco-0", id: 0 },
-        { canvasId: "aruco-1", id: 1 },
-        { canvasId: "aruco-2", id: 2 },
-        { canvasId: "aruco-3", id: 3 },
-      ];
-
-      document.getElementById("print-btn").addEventListener("click", () => {
-        window.print();
-      });
-
-      waitForOpenCv()
-        .then(renderAllMarkers)
-        .catch((err) => {
-          statusEl.textContent = `Erreur: ${String(err?.message || err)}`;
-        });
-
-      async function waitForOpenCv() {
-        if (window.cv && window.cv.Mat) return;
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("OpenCV non charge (timeout).")), 15000);
-          const check = () => {
-            if (window.cv && window.cv.Mat) {
-              clearTimeout(timeout);
-              resolve();
-            } else {
-              setTimeout(check, 100);
-            }
-          };
-          check();
-        });
-      }
-
-      function renderAllMarkers() {
-        const cvApi = window.cv;
-        const arucoApi = resolveArucoApi(cvApi);
-
-        const dictId = arucoApi.constants[DICT_NAME];
-        if (typeof dictId === "undefined") {
-          throw new Error(`Dictionnaire ArUco introuvable: ${DICT_NAME}`);
-        }
-        const dictionary = arucoApi.getPredefinedDictionary(dictId);
-
-        markerDefs.forEach((def) => {
-          const marker = new cvApi.Mat();
-          arucoApi.drawMarker(dictionary, def.id, MARKER_SIZE_PX, marker);
-          cvApi.imshow(def.canvasId, marker);
-          marker.delete();
-        });
-
-        statusEl.textContent = "Marqueurs ArUco prets a imprimer.";
-      }
-
-      function resolveArucoApi(cvApi) {
-        // Legacy namespace API: cv.aruco.*
-        if (cvApi?.aruco && typeof cvApi.aruco.getPredefinedDictionary === "function") {
-          const drawFn = cvApi.aruco.drawMarker || cvApi.aruco.generateImageMarker;
-          if (typeof drawFn !== "function") {
-            throw new Error("ArUco indisponible: drawMarker/generateImageMarker manquant.");
-          }
-          return {
-            constants: cvApi.aruco,
-            getPredefinedDictionary: cvApi.aruco.getPredefinedDictionary.bind(cvApi.aruco),
-            drawMarker: drawFn.bind(cvApi.aruco),
-          };
-        }
-
-        // New API style: top-level symbols
-        if (typeof cvApi?.getPredefinedDictionary === "function") {
-          const drawFn = cvApi.drawMarker || cvApi.generateImageMarker;
-          if (typeof drawFn !== "function") {
-            throw new Error("ArUco indisponible: drawMarker/generateImageMarker manquant.");
-          }
-          return {
-            constants: cvApi,
-            getPredefinedDictionary: cvApi.getPredefinedDictionary.bind(cvApi),
-            drawMarker: drawFn.bind(cvApi),
-          };
-        }
-
-        throw new Error("ArUco indisponible: getPredefinedDictionary manquant.");
-      }
-    </script>
   </body>
 </html>

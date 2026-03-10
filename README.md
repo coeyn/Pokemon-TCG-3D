@@ -1,8 +1,8 @@
-# Poke TCG 3D - Prototype ArUco + AR Web
+# Poke TCG 3D - Prototype AprilTag + AR Web
 
 Prototype web pour:
 - lire la camera
-- detecter 4 marqueurs ArUco de calibration (IDs `0`, `1`, `2`, `3`)
+- detecter 4 marqueurs AprilTag (famille `tag36h11`, IDs `0`, `1`, `2`, `3`)
 - estimer la pose du playmat
 - afficher un objet 3D ancre sur le playmat
 
@@ -26,7 +26,7 @@ Puis ouvre:
 - ou `http://localhost:8000` (avec Python)
 
 Page utile:
-- `http://localhost:3000/qr-markers-print.html` (ou port 8000) pour imprimer les marqueurs ArUco.
+- `http://localhost:3000/qr-markers-print.html` (ou port 8000) pour les liens/outils de generation des AprilTag.
 
 ## Deploiement GitHub Pages
 
@@ -41,9 +41,9 @@ Page utile:
 
 Sur mobile, la camera doit etre autorisee en HTTPS. GitHub Pages est en HTTPS par defaut.
 
-## Calibration ArUco
+## Calibration AprilTag
 
-Imprime 4 marqueurs ArUco et place-les aux 4 coins du playmat:
+Utilise 4 marqueurs AprilTag `tag36h11` et place-les aux 4 coins du playmat:
 - haut gauche: ID `0`
 - haut droit: ID `1`
 - bas droit: ID `2`
@@ -64,13 +64,5 @@ Si tu ajoutes un fichier `assets/pokemon.glb`, il sera charge automatiquement et
 ## Limitations actuelles
 
 - intrinseques camera approximees (FOV fixe) -> leger decalage possible
-- depend de la disponibilite du module ArUco dans la build OpenCV.js
+- detection AprilTag basee sur l'implementation JS locale (`vendor/apriltag.js`)
 - pas encore de suivi NFC/RFID des cartes (etape suivante)
-
-## Depannage ArUco
-
-Si tu vois une erreur ArUco, la page tente deja les 2 APIs OpenCV.js les plus courantes:
-- `cv.aruco.*`
-- `cv.getPredefinedDictionary` / `cv.detectMarkers` / `cv.ArucoDetector`
-
-Si aucune de ces APIs n'est presente, il faut une build OpenCV.js avec ArUco (opencv_contrib).

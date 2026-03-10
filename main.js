@@ -6,7 +6,6 @@ const MAT_HEIGHT_M = 0.35;
 const REQUIRED_IDS = [0, 1, 2, 3];
 const ASSUMED_FOV_DEG = 60;
 const MAX_SCAN_WIDTH = 960;
-const ARUCO_DICT_NAME = "DICT_4X4_50";
 
 const video = document.getElementById("camera");
 const threeCanvas = document.getElementById("three-canvas");
@@ -67,10 +66,7 @@ let lastFoundMarkers = [];
 let animationStarted = false;
 let currentStream = null;
 let scanScale = 1;
-let arucoDictionary = null;
-let arucoParams = null;
-let arucoApi = null;
-let arucoDetector = null;
+let aprilTagReady = false;
 
 startBtn.addEventListener("click", async () => {
   await startOrRestartTracking();
@@ -114,11 +110,11 @@ async function startOrRestartTracking() {
   try {
     ensureCameraPrerequisites();
     await waitForOpenCv();
-    ensureArucoReady();
+    ensureAprilTagReady();
     await startCamera(cameraSelect.value || null);
     setupAfterVideoReady();
     const count = await populateCameraSelect();
-    statusEl.textContent = "Etat: tracking actif (en recherche des 4 ArUco)";
+    statusEl.textContent = "Etat: tracking actif (en recherche des 4 AprilTag)";
     if (count <= 1) {
       qrStatusEl.textContent = "Info camera: 1 seule camera detectee";
     }
@@ -145,56 +141,12 @@ function ensureCameraPrerequisites() {
   }
 }
 
-function ensureArucoReady() {
-  if (arucoApi && arucoDictionary) return;
-  const cvApi = window.cv;
-  arucoApi = resolveArucoApi(cvApi);
-
-  const dictId = arucoApi.constants[ARUCO_DICT_NAME];
-  if (typeof dictId === "undefined") {
-    throw new Error(`Dictionnaire ArUco introuvable: ${ARUCO_DICT_NAME}.`);
+function ensureAprilTagReady() {
+  if (aprilTagReady) return;
+  if (typeof window.apriltagDetect !== "function") {
+    throw new Error("AprilTag indisponible: script vendor/apriltag.js non charge.");
   }
-
-  arucoDictionary = arucoApi.getPredefinedDictionary(dictId);
-  arucoParams = arucoApi.createDetectorParameters ? arucoApi.createDetectorParameters() : null;
-  if (arucoApi.ArucoDetector) {
-    arucoDetector = new arucoApi.ArucoDetector(arucoDictionary, arucoParams || undefined);
-  }
-}
-
-function resolveArucoApi(cvApi) {
-  // Legacy namespace API: cv.aruco.*
-  if (cvApi?.aruco && typeof cvApi.aruco.getPredefinedDictionary === "function") {
-    const createDetectorParameters =
-      cvApi.aruco.DetectorParameters?.create
-      || (cvApi?.aruco_DetectorParameters ? (() => new cvApi.aruco_DetectorParameters()) : null);
-    return {
-      constants: cvApi.aruco,
-      getPredefinedDictionary: cvApi.aruco.getPredefinedDictionary.bind(cvApi.aruco),
-      detectMarkers: typeof cvApi.aruco.detectMarkers === "function" ? cvApi.aruco.detectMarkers.bind(cvApi.aruco) : null,
-      createDetectorParameters,
-      ArucoDetector: null,
-      mode: "namespace",
-    };
-  }
-
-  // New API style: cv.getPredefinedDictionary + cv.ArucoDetector
-  if (typeof cvApi?.getPredefinedDictionary === "function" && cvApi?.ArucoDetector) {
-    const createDetectorParameters =
-      cvApi.DetectorParameters?.create
-      || (cvApi?.DetectorParameters ? (() => new cvApi.DetectorParameters()) : null)
-      || (cvApi?.aruco_DetectorParameters ? (() => new cvApi.aruco_DetectorParameters()) : null);
-    return {
-      constants: cvApi,
-      getPredefinedDictionary: cvApi.getPredefinedDictionary.bind(cvApi),
-      detectMarkers: null,
-      createDetectorParameters,
-      ArucoDetector: cvApi.ArucoDetector,
-      mode: "detector",
-    };
-  }
-
-  throw new Error("ArUco indisponible dans cette build OpenCV.js (API detectee incompatible).");
+  aprilTagReady = true;
 }
 
 async function waitForOpenCv() {
@@ -369,68 +321,73 @@ function loop() {
   scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
   const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
   if (frameIndex % 2 === 0) {
-    lastFoundMarkers = detectArucoMarkers(imageData, scanScale);
+    lastFoundMarkers = detectAprilTags(imageData, scanScale);
     drawDebug(lastFoundMarkers);
     const pose = estimatePoseFromMarkers(lastFoundMarkers);
     applyPose(pose);
   }
 
   const ids = lastFoundMarkers.map((f) => f.id).sort((a, b) => a - b).join(", ");
-  qrStatusEl.textContent = `ArUco detectes: ${ids || "aucun"}`;
+  qrStatusEl.textContent = `AprilTag detectes: ${ids || "aucun"}`;
 
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
 
-function detectArucoMarkers(imageData, scale) {
+function detectAprilTags(imageData, scale) {
   const cvApi = window.cv;
   const out = [];
-
+  const seenIds = new Set();
   const rgba = cvApi.matFromImageData(imageData);
-  const gray = new cvApi.Mat();
-  cvApi.cvtColor(rgba, gray, cvApi.COLOR_RGBA2GRAY);
+  const rgb = new cvApi.Mat();
+  cvApi.cvtColor(rgba, rgb, cvApi.COLOR_RGBA2RGB);
 
-  const corners = new cvApi.MatVector();
-  const ids = new cvApi.Mat();
-  const rejected = new cvApi.MatVector();
-  if (arucoDetector && typeof arucoDetector.detectMarkers === "function") {
-    try {
-      arucoDetector.detectMarkers(gray, corners, ids, rejected);
-    } catch {
-      arucoDetector.detectMarkers(gray, corners, ids);
+  window.apriltagDetect(rgb, (detections) => {
+    for (const det of detections) {
+      const markerId = Number(det.id);
+      if (!Number.isInteger(markerId) || !REQUIRED_IDS.includes(markerId) || seenIds.has(markerId)) continue;
+      const originalLocation = scaleQuadToLocation(det.points, scale);
+      out.push({
+        id: markerId,
+        center: averageCorners(originalLocation),
+        location: originalLocation,
+      });
+      seenIds.add(markerId);
     }
-  } else {
-    arucoApi.detectMarkers(gray, arucoDictionary, corners, ids, arucoParams || undefined, rejected);
-  }
-
-  for (let i = 0; i < ids.rows; i += 1) {
-    const markerId = typeof ids.intAt === "function" ? ids.intAt(i, 0) : ids.data32S[i];
-    if (!REQUIRED_IDS.includes(markerId)) continue;
-
-    const markerCorners = corners.get(i);
-    const p = markerCorners.data32F;
-    const scaledLocation = {
-      topLeftCorner: { x: p[0], y: p[1] },
-      topRightCorner: { x: p[2], y: p[3] },
-      bottomRightCorner: { x: p[4], y: p[5] },
-      bottomLeftCorner: { x: p[6], y: p[7] },
-    };
-    const originalLocation = scaleQrLocation(scaledLocation, scale);
-    out.push({
-      id: markerId,
-      center: averageCorners(originalLocation),
-      location: originalLocation,
-    });
-    markerCorners.delete();
-  }
+  });
 
   rgba.delete();
-  gray.delete();
-  corners.delete();
-  ids.delete();
-  rejected.delete();
+  rgb.delete();
 
   return out;
+}
+
+function scaleQuadToLocation(pointsMat, scale) {
+  const p = pointsMat.data32S;
+  const pts = [
+    { x: p[0], y: p[1] },
+    { x: p[2], y: p[3] },
+    { x: p[4], y: p[5] },
+    { x: p[6], y: p[7] },
+  ];
+  const ordered = orderCornersClockwise(pts);
+  const scaled = {
+    topLeftCorner: ordered[0],
+    topRightCorner: ordered[1],
+    bottomRightCorner: ordered[2],
+    bottomLeftCorner: ordered[3],
+  };
+  return scaleQrLocation(scaled, scale);
+}
+
+function orderCornersClockwise(pts) {
+  const sortedBySum = [...pts].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+  const sortedByDiff = [...pts].sort((a, b) => (a.x - a.y) - (b.x - b.y));
+  const topLeft = sortedBySum[0];
+  const bottomRight = sortedBySum[3];
+  const bottomLeft = sortedByDiff[0];
+  const topRight = sortedByDiff[3];
+  return [topLeft, topRight, bottomRight, bottomLeft];
 }
 
 function scaleQrLocation(location, scale) {
