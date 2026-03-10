@@ -28,6 +28,19 @@ Puis ouvre:
 Page utile:
 - `http://localhost:3000/qr-markers-print.html` (ou port 8000) pour imprimer les QR de calibration.
 
+## Deploiement GitHub Pages
+
+1. Va dans `Settings` > `Pages` du repo GitHub.
+2. Dans `Build and deployment`, choisis:
+- `Source`: `Deploy from a branch`
+- `Branch`: `main`
+- `Folder`: `/ (root)`
+3. Clique `Save`.
+4. Attends 1 a 3 minutes, puis ouvre:
+- `https://coeyn.github.io/Pokemon-TCG-3D/`
+
+Sur mobile, la camera doit etre autorisee en HTTPS. GitHub Pages est en HTTPS par defaut.
+
 ## Calibration QR
 
 Imprime 4 QR et place-les aux 4 coins du playmat:
