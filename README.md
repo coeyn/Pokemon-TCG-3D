@@ -66,3 +66,11 @@ Si tu ajoutes un fichier `assets/pokemon.glb`, il sera charge automatiquement et
 - intrinseques camera approximees (FOV fixe) -> leger decalage possible
 - depend de la disponibilite du module ArUco dans la build OpenCV.js
 - pas encore de suivi NFC/RFID des cartes (etape suivante)
+
+## Depannage ArUco
+
+Si tu vois une erreur ArUco, la page tente deja les 2 APIs OpenCV.js les plus courantes:
+- `cv.aruco.*`
+- `cv.getPredefinedDictionary` / `cv.detectMarkers` / `cv.ArucoDetector`
+
+Si aucune de ces APIs n'est presente, il faut une build OpenCV.js avec ArUco (opencv_contrib).

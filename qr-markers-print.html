@@ -201,24 +201,42 @@
 
       function renderAllMarkers() {
         const cvApi = window.cv;
-        if (!cvApi.aruco || typeof cvApi.aruco.getPredefinedDictionary !== "function") {
-          throw new Error("ArUco indisponible dans cette build OpenCV.js.");
-        }
+        const arucoApi = resolveArucoApi(cvApi);
 
-        const dictId = cvApi.aruco[DICT_NAME];
+        const dictId = arucoApi.constants[DICT_NAME];
         if (typeof dictId === "undefined") {
           throw new Error(`Dictionnaire ArUco introuvable: ${DICT_NAME}`);
         }
-        const dictionary = cvApi.aruco.getPredefinedDictionary(dictId);
+        const dictionary = arucoApi.getPredefinedDictionary(dictId);
 
         markerDefs.forEach((def) => {
           const marker = new cvApi.Mat();
-          cvApi.aruco.drawMarker(dictionary, def.id, MARKER_SIZE_PX, marker, 1);
+          arucoApi.drawMarker(dictionary, def.id, MARKER_SIZE_PX, marker);
           cvApi.imshow(def.canvasId, marker);
           marker.delete();
         });
 
         statusEl.textContent = "Marqueurs ArUco prets a imprimer.";
+      }
+
+      function resolveArucoApi(cvApi) {
+        const ns = cvApi?.aruco || cvApi;
+        const constants = cvApi?.aruco || cvApi;
+        const getPredefinedDictionary = ns?.getPredefinedDictionary || cvApi?.getPredefinedDictionary;
+        const drawMarker =
+          ns?.drawMarker
+          || cvApi?.drawMarker
+          || ns?.generateImageMarker
+          || cvApi?.generateImageMarker;
+
+        if (typeof getPredefinedDictionary !== "function") {
+          throw new Error("ArUco indisponible: getPredefinedDictionary manquant.");
+        }
+        if (typeof drawMarker !== "function") {
+          throw new Error("ArUco indisponible: drawMarker/generateImageMarker manquant.");
+        }
+
+        return { constants, getPredefinedDictionary, drawMarker };
       }
     </script>
   </body>
