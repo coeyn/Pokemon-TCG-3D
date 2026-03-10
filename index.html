@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poke TCG 3D - Prototype AR QR</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+          "three/examples/jsm/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+        }
+      }
+    </script>
+    <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <video id="camera" autoplay playsinline muted></video>
+      <canvas id="three-canvas"></canvas>
+      <canvas id="debug-canvas"></canvas>
+      <div id="hud">
+        <label for="camera-select">Camera</label>
+        <select id="camera-select">
+          <option value="">Camera par defaut</option>
+        </select>
+        <button id="start-btn">Demarrer la camera</button>
+        <div id="status">Etat: en attente</div>
+        <div id="qr-status">QR detectes: aucun</div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
