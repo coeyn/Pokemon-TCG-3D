@@ -96,11 +96,28 @@ let decode = (tagCode, points) => {
   return tagDetection;
 }
 
+let quadToPoints = (quad) => {
+  if (!quad || !quad.data32S || quad.data32S.length < 8) return null;
+  const p = quad.data32S;
+  return [
+    [p[0], p[1]],
+    [p[2], p[3]],
+    [p[4], p[5]],
+    [p[6], p[7]],
+  ];
+}
+
 
 let decodeQuad = (quads, gray) => {
   let detections = new Array();
   let points = new Array();
   for(let i = 0; i < quads.size(); i++){
+    const quad = quads.get(i);
+    const quadPoints = quadToPoints(quad);
+    if (!quadPoints) {
+      quad.delete();
+      continue;
+    }
     let dd = 2*1 + 6;
     let blackValue = new Array();
     let whiteValue = new Array();
@@ -109,9 +126,12 @@ let decodeQuad = (quads, gray) => {
       for(let ix = 0; ix < dd; ix++){
         let x = (ix + 0.5) / dd;
         let y = (iy + 0.5) / dd;
-        let point = interpolate(quads.get(i), [x, y]);
+        let point = interpolate(quad, [x, y]);
         point[0] = parseInt(point[0]);
         point[1] = parseInt(point[1]);
+        if (point[0] < 0 || point[1] < 0 || point[0] >= gray.rows || point[1] >= gray.cols) {
+          continue;
+        }
         points.push(point);
         let value = gray.row(point[0]).col(point[1]).data[0];
         if ((iy == 0 || iy == dd - 1) || (ix == 0 || ix == dd - 1))
@@ -129,19 +149,23 @@ let decodeQuad = (quads, gray) => {
           continue
         let x = (ix + 0.5) / dd;
         let y = (iy + 0.5) / dd;
-        let point = interpolate(quads.get(i), [x, y]);
+        let point = interpolate(quad, [x, y]);
         point[0] = parseInt(point[0]);
         point[1] = parseInt(point[1]);
+        if (point[0] < 0 || point[1] < 0 || point[0] >= gray.rows || point[1] >= gray.cols) {
+          continue;
+        }
         let value = gray.row(point[0]).col(point[1]).data[0];
         tagCode = tagCode << 1;
         if( value > threshold )
           tagCode |= 1
       }
     }
-    let detection = decode(tagCode, quads.get(i));
+    let detection = decode(tagCode, quadPoints);
     //console.log(detection);
     if ( detection.good == true ) 
       detections.push(detection);
+    quad.delete();
   }
   return detections;
 }
@@ -149,44 +173,63 @@ let decodeQuad = (quads, gray) => {
 let detect = (mat, callback) => {
   let gray = new cv.Mat();
   let img = new cv.Mat();
-  cv.cvtColor(mat, gray, cv.COLOR_RGB2GRAY);
-  // 1 - Blur 
-  let ksize = new cv.Size(3, 3);
-  cv.GaussianBlur(gray, img, ksize, 0.8);
-  // 2 - Adaptive Thresholding
-  cv.adaptiveThreshold(img, img, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 9, 5);
-  let msize = new cv.Size(2, 2);
-  let M = new cv.Mat();
-  M = cv.getStructuringElement(cv.MORPH_RECT, msize);
-  cv.morphologyEx(img, img, cv.MORPH_OPEN, M);
-  // 3 - Finding Contours
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
-  cv.findContours(img, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-  // 4 -  Compute Convex Hulls and Find Maximum Inscribed Quadrilaterals
   let quads = new cv.MatVector();
-  for (let i = 0; i<contours.size(); i++){
-    if(hierarchy.row(0).col(i).data32S[3] < 0 && contours.get(i).data32S.length >= 8){
-      let area = cv.contourArea(contours.get(i))
-      if (area > 400){
-        let hull = new cv.Mat();
-        cv.convexHull(contours.get(i), hull);
-        if((area / cv.contourArea(hull)) > 0.8){
-          let quad = new cv.Mat();
-          cv.approxPolyDP(hull, quad, 8, true)
-          if(quad.data32S.length == 8){
-            let areaQuad = cv.contourArea(quad);
-            let areaHull = cv.contourArea(hull);
-            if( (areaQuad / areaHull) > 0.8 && areaHull >= areaQuad )
-              quads.push_back(quad);
+  let M = new cv.Mat();
+  try {
+    cv.cvtColor(mat, gray, cv.COLOR_RGB2GRAY);
+    // 1 - Blur 
+    let ksize = new cv.Size(3, 3);
+    cv.GaussianBlur(gray, img, ksize, 0.8);
+    // 2 - Adaptive Thresholding
+    cv.adaptiveThreshold(img, img, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 9, 5);
+    let msize = new cv.Size(2, 2);
+    M = cv.getStructuringElement(cv.MORPH_RECT, msize);
+    cv.morphologyEx(img, img, cv.MORPH_OPEN, M);
+    // 3 - Finding Contours
+    cv.findContours(img, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    // 4 -  Compute Convex Hulls and Find Maximum Inscribed Quadrilaterals
+    for (let i = 0; i<contours.size(); i++){
+      const contour = contours.get(i);
+      try {
+        if(hierarchy.row(0).col(i).data32S[3] < 0 && contour.data32S.length >= 8){
+          let area = cv.contourArea(contour)
+          if (area > 400){
+            let hull = new cv.Mat();
+            try {
+              cv.convexHull(contour, hull);
+              if((area / cv.contourArea(hull)) > 0.8){
+                let quad = new cv.Mat();
+                cv.approxPolyDP(hull, quad, 8, true)
+                if(quad.data32S.length == 8){
+                  let areaQuad = cv.contourArea(quad);
+                  let areaHull = cv.contourArea(hull);
+                  if( (areaQuad / areaHull) > 0.8 && areaHull >= areaQuad )
+                    quads.push_back(quad);
+                }
+                quad.delete();
+              }
+            } finally {
+              hull.delete();
+            }
           }
         }
+      } finally {
+        contour.delete();
       }
     }
+    // 5 - Decode Quadrilaterals
+    let detections = decodeQuad(quads, gray);
+    callback(detections);
+  } finally {
+    gray.delete();
+    img.delete();
+    contours.delete();
+    hierarchy.delete();
+    quads.delete();
+    M.delete();
   }
-  // 5 - Decode Quadrilaterals
-  let detections = decodeQuad(quads, gray);
-  callback(detections);
 }; 
 
 TAG36H11 =  [

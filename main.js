@@ -369,15 +369,12 @@ function detectAprilTags(imageData, scale) {
 }
 
 function scaleQuadToLocation(pointsMat, scale) {
-  if (!pointsMat) return null;
-  const p = pointsMat.data32S || pointsMat.data32F;
-  if (!p || p.length < 8) return null;
-  const pts = [
-    { x: p[0], y: p[1] },
-    { x: p[2], y: p[3] },
-    { x: p[4], y: p[5] },
-    { x: p[6], y: p[7] },
-  ];
+  if (!pointsMat || !Array.isArray(pointsMat) || pointsMat.length < 4) return null;
+  const pts = pointsMat.map((pair) => {
+    if (!Array.isArray(pair) || pair.length < 2) return null;
+    return { x: Number(pair[0]), y: Number(pair[1]) };
+  }).filter(Boolean);
+  if (pts.length < 4) return null;
   const ordered = orderCornersClockwise(pts);
   const scaled = {
     topLeftCorner: ordered[0],
