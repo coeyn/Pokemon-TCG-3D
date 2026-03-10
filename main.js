@@ -342,19 +342,25 @@ function detectAprilTags(imageData, scale) {
   const rgb = new cvApi.Mat();
   cvApi.cvtColor(rgba, rgb, cvApi.COLOR_RGBA2RGB);
 
-  window.apriltagDetect(rgb, (detections) => {
-    for (const det of detections) {
-      const markerId = Number(det.id);
-      if (!Number.isInteger(markerId) || !REQUIRED_IDS.includes(markerId) || seenIds.has(markerId)) continue;
-      const originalLocation = scaleQuadToLocation(det.points, scale);
-      out.push({
-        id: markerId,
-        center: averageCorners(originalLocation),
-        location: originalLocation,
-      });
-      seenIds.add(markerId);
-    }
-  });
+  try {
+    window.apriltagDetect(rgb, (detections) => {
+      for (const det of detections || []) {
+        if (!det || !det.points) continue;
+        const markerId = Number(det.id);
+        if (!Number.isInteger(markerId) || !REQUIRED_IDS.includes(markerId) || seenIds.has(markerId)) continue;
+        const originalLocation = scaleQuadToLocation(det.points, scale);
+        if (!originalLocation) continue;
+        out.push({
+          id: markerId,
+          center: averageCorners(originalLocation),
+          location: originalLocation,
+        });
+        seenIds.add(markerId);
+      }
+    });
+  } catch {
+    // Ignore unstable frames when the detector returns invalid point buffers.
+  }
 
   rgba.delete();
   rgb.delete();
@@ -363,7 +369,9 @@ function detectAprilTags(imageData, scale) {
 }
 
 function scaleQuadToLocation(pointsMat, scale) {
-  const p = pointsMat.data32S;
+  if (!pointsMat) return null;
+  const p = pointsMat.data32S || pointsMat.data32F;
+  if (!p || p.length < 8) return null;
   const pts = [
     { x: p[0], y: p[1] },
     { x: p[2], y: p[3] },
