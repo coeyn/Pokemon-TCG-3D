@@ -1,12 +1,12 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import jsQR from "https://esm.sh/jsqr@1.4.0";
 
 const MAT_WIDTH_M = 0.6;
 const MAT_HEIGHT_M = 0.35;
-const REQUIRED_IDS = ["TL", "TR", "BR", "BL"];
+const REQUIRED_IDS = [0, 1, 2, 3];
 const ASSUMED_FOV_DEG = 60;
 const MAX_SCAN_WIDTH = 960;
+const ARUCO_DICT_NAME = "DICT_4X4_50";
 
 const video = document.getElementById("camera");
 const threeCanvas = document.getElementById("three-canvas");
@@ -67,6 +67,8 @@ let lastFoundMarkers = [];
 let animationStarted = false;
 let currentStream = null;
 let scanScale = 1;
+let arucoDictionary = null;
+let arucoParams = null;
 
 startBtn.addEventListener("click", async () => {
   await startOrRestartTracking();
@@ -110,10 +112,11 @@ async function startOrRestartTracking() {
   try {
     ensureCameraPrerequisites();
     await waitForOpenCv();
+    ensureArucoReady();
     await startCamera(cameraSelect.value || null);
     setupAfterVideoReady();
     const count = await populateCameraSelect();
-    statusEl.textContent = "Etat: tracking actif (en recherche des 4 QR)";
+    statusEl.textContent = "Etat: tracking actif (en recherche des 4 ArUco)";
     if (count <= 1) {
       qrStatusEl.textContent = "Info camera: 1 seule camera detectee";
     }
@@ -137,6 +140,32 @@ function ensureCameraPrerequisites() {
   }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error("getUserMedia non supporte par ce navigateur.");
+  }
+}
+
+function ensureArucoReady() {
+  if (arucoDictionary && arucoParams) return;
+  const cvApi = window.cv;
+
+  if (!cvApi?.aruco) {
+    throw new Error("Module ArUco absent dans cette build OpenCV.js.");
+  }
+
+  const dictId = cvApi.aruco[ARUCO_DICT_NAME];
+  if (typeof dictId === "undefined") {
+    throw new Error(`Dictionnaire ArUco introuvable: ${ARUCO_DICT_NAME}.`);
+  }
+  if (typeof cvApi.aruco.getPredefinedDictionary !== "function") {
+    throw new Error("API ArUco getPredefinedDictionary indisponible.");
+  }
+
+  arucoDictionary = cvApi.aruco.getPredefinedDictionary(dictId);
+  if (cvApi.aruco.DetectorParameters?.create) {
+    arucoParams = cvApi.aruco.DetectorParameters.create();
+  } else if (cvApi.aruco_DetectorParameters) {
+    arucoParams = new cvApi.aruco_DetectorParameters();
+  } else {
+    throw new Error("DetectorParameters ArUco indisponible.");
   }
 }
 
@@ -312,41 +341,58 @@ function loop() {
   scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
   const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
   if (frameIndex % 2 === 0) {
-    lastFoundMarkers = detectMultipleQrCodes(imageData, 8, scanScale);
+    lastFoundMarkers = detectArucoMarkers(imageData, scanScale);
     drawDebug(lastFoundMarkers);
     const pose = estimatePoseFromMarkers(lastFoundMarkers);
     applyPose(pose);
   }
 
-  const ids = lastFoundMarkers.map((f) => f.id).sort().join(", ");
-  qrStatusEl.textContent = `QR detectes: ${ids || "aucun"}`;
+  const ids = lastFoundMarkers.map((f) => f.id).sort((a, b) => a - b).join(", ");
+  qrStatusEl.textContent = `ArUco detectes: ${ids || "aucun"}`;
 
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
 
-function detectMultipleQrCodes(imageData, maxCount, scale) {
-  const width = imageData.width;
-  const height = imageData.height;
-  const working = new Uint8ClampedArray(imageData.data);
+function detectArucoMarkers(imageData, scale) {
+  const cvApi = window.cv;
   const out = [];
 
-  for (let i = 0; i < maxCount; i += 1) {
-    const code = jsQR(working, width, height, { inversionAttempts: "attemptBoth" });
-    if (!code) break;
+  const rgba = cvApi.matFromImageData(imageData);
+  const gray = new cvApi.Mat();
+  cvApi.cvtColor(rgba, gray, cvApi.COLOR_RGBA2GRAY);
 
-    const id = String(code.data || "").trim().toUpperCase();
-    if (REQUIRED_IDS.includes(id) && !out.some((entry) => entry.id === id)) {
-      const originalLocation = scaleQrLocation(code.location, scale);
-      out.push({
-        id,
-        center: averageCorners(originalLocation),
-        location: originalLocation,
-      });
-    }
+  const corners = new cvApi.MatVector();
+  const ids = new cvApi.Mat();
+  const rejected = new cvApi.MatVector();
+  cvApi.aruco.detectMarkers(gray, arucoDictionary, corners, ids, arucoParams, rejected);
 
-    maskRectAroundCode(working, width, height, code.location, 20);
+  for (let i = 0; i < ids.rows; i += 1) {
+    const markerId = typeof ids.intAt === "function" ? ids.intAt(i, 0) : ids.data32S[i];
+    if (!REQUIRED_IDS.includes(markerId)) continue;
+
+    const markerCorners = corners.get(i);
+    const p = markerCorners.data32F;
+    const scaledLocation = {
+      topLeftCorner: { x: p[0], y: p[1] },
+      topRightCorner: { x: p[2], y: p[3] },
+      bottomRightCorner: { x: p[4], y: p[5] },
+      bottomLeftCorner: { x: p[6], y: p[7] },
+    };
+    const originalLocation = scaleQrLocation(scaledLocation, scale);
+    out.push({
+      id: markerId,
+      center: averageCorners(originalLocation),
+      location: originalLocation,
+    });
+    markerCorners.delete();
   }
+
+  rgba.delete();
+  gray.delete();
+  corners.delete();
+  ids.delete();
+  rejected.delete();
 
   return out;
 }
@@ -376,40 +422,6 @@ function averageCorners(location) {
     y += p.y;
   }
   return { x: x / pts.length, y: y / pts.length };
-}
-
-function maskRectAroundCode(buffer, width, height, location, pad) {
-  const pts = [
-    location.topLeftCorner,
-    location.topRightCorner,
-    location.bottomRightCorner,
-    location.bottomLeftCorner,
-  ];
-  let minX = width;
-  let minY = height;
-  let maxX = 0;
-  let maxY = 0;
-  for (const p of pts) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
-  }
-
-  minX = Math.max(0, Math.floor(minX - pad));
-  minY = Math.max(0, Math.floor(minY - pad));
-  maxX = Math.min(width - 1, Math.ceil(maxX + pad));
-  maxY = Math.min(height - 1, Math.ceil(maxY + pad));
-
-  for (let y = minY; y <= maxY; y += 1) {
-    for (let x = minX; x <= maxX; x += 1) {
-      const idx = (y * width + x) * 4;
-      buffer[idx + 0] = 255;
-      buffer[idx + 1] = 255;
-      buffer[idx + 2] = 255;
-      buffer[idx + 3] = 255;
-    }
-  }
 }
 
 function estimatePoseFromMarkers(foundMarkers) {

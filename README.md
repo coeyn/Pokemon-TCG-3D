@@ -1,8 +1,8 @@
-# Poke TCG 3D - Prototype QR + AR Web
+# Poke TCG 3D - Prototype ArUco + AR Web
 
 Prototype web pour:
 - lire la camera
-- detecter 4 QR de calibration (`TL`, `TR`, `BR`, `BL`)
+- detecter 4 marqueurs ArUco de calibration (IDs `0`, `1`, `2`, `3`)
 - estimer la pose du playmat
 - afficher un objet 3D ancre sur le playmat
 
@@ -26,7 +26,7 @@ Puis ouvre:
 - ou `http://localhost:8000` (avec Python)
 
 Page utile:
-- `http://localhost:3000/qr-markers-print.html` (ou port 8000) pour imprimer les QR de calibration.
+- `http://localhost:3000/qr-markers-print.html` (ou port 8000) pour imprimer les marqueurs ArUco.
 
 ## Deploiement GitHub Pages
 
@@ -41,13 +41,13 @@ Page utile:
 
 Sur mobile, la camera doit etre autorisee en HTTPS. GitHub Pages est en HTTPS par defaut.
 
-## Calibration QR
+## Calibration ArUco
 
-Imprime 4 QR et place-les aux 4 coins du playmat:
-- haut gauche: `TL`
-- haut droit: `TR`
-- bas droit: `BR`
-- bas gauche: `BL`
+Imprime 4 marqueurs ArUco et place-les aux 4 coins du playmat:
+- haut gauche: ID `0`
+- haut droit: ID `1`
+- bas droit: ID `2`
+- bas gauche: ID `3`
 
 Le code attend un playmat de taille reelle:
 - largeur: `0.60 m`
@@ -64,5 +64,5 @@ Si tu ajoutes un fichier `assets/pokemon.glb`, il sera charge automatiquement et
 ## Limitations actuelles
 
 - intrinseques camera approximees (FOV fixe) -> leger decalage possible
-- detection QR basee sur image 2D, sensible a la lumiere/flou
+- depend de la disponibilite du module ArUco dans la build OpenCV.js
 - pas encore de suivi NFC/RFID des cartes (etape suivante)

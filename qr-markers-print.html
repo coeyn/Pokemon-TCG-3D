@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pokemon TCG 3D - QR Markers</title>
+    <title>Pokemon TCG 3D - ArUco Markers</title>
     <style>
       :root {
         --marker-size-mm: 40;
@@ -55,9 +55,15 @@
       }
 
       .hint {
-        margin: 0 0 10mm;
+        margin: 0 0 4mm;
         font-size: 12px;
         color: #334155;
+      }
+
+      .status {
+        margin: 0 0 10mm;
+        font-size: 12px;
+        color: #92400e;
       }
 
       .grid {
@@ -88,15 +94,9 @@
         overflow: hidden;
       }
 
-      .marker-qr {
+      .marker-canvas {
         width: 100%;
         height: 100%;
-      }
-
-      .marker-qr canvas,
-      .marker-qr img {
-        width: 100% !important;
-        height: 100% !important;
         display: block;
       }
 
@@ -122,7 +122,7 @@
         }
       }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   </head>
   <body>
     <div class="toolbar">
@@ -131,59 +131,95 @@
     </div>
 
     <main class="sheet">
-      <h1 class="title">Pokemon TCG 3D - QR de calibration</h1>
+      <h1 class="title">Pokemon TCG 3D - ArUco de calibration</h1>
       <p class="hint">
-        Decoupe les 4 QR puis place-les aux coins du playmat:
-        TL (haut gauche), TR (haut droit), BR (bas droit), BL (bas gauche).
+        Decoupe les 4 marqueurs puis place-les aux coins du playmat:
+        ID 0 (haut gauche), ID 1 (haut droit), ID 2 (bas droit), ID 3 (bas gauche).
       </p>
+      <p class="status" id="render-status">Generation des marqueurs...</p>
 
       <section class="grid">
         <article class="marker">
-          <div class="marker-label">TL</div>
-          <div class="marker-box"><div class="marker-qr" id="qr-tl"></div></div>
+          <div class="marker-label">ID 0</div>
+          <div class="marker-box"><canvas class="marker-canvas" id="aruco-0" width="360" height="360"></canvas></div>
           <div class="place">Haut gauche</div>
         </article>
         <article class="marker">
-          <div class="marker-label">TR</div>
-          <div class="marker-box"><div class="marker-qr" id="qr-tr"></div></div>
+          <div class="marker-label">ID 1</div>
+          <div class="marker-box"><canvas class="marker-canvas" id="aruco-1" width="360" height="360"></canvas></div>
           <div class="place">Haut droit</div>
         </article>
         <article class="marker">
-          <div class="marker-label">BL</div>
-          <div class="marker-box"><div class="marker-qr" id="qr-bl"></div></div>
+          <div class="marker-label">ID 3</div>
+          <div class="marker-box"><canvas class="marker-canvas" id="aruco-3" width="360" height="360"></canvas></div>
           <div class="place">Bas gauche</div>
         </article>
         <article class="marker">
-          <div class="marker-label">BR</div>
-          <div class="marker-box"><div class="marker-qr" id="qr-br"></div></div>
+          <div class="marker-label">ID 2</div>
+          <div class="marker-box"><canvas class="marker-canvas" id="aruco-2" width="360" height="360"></canvas></div>
           <div class="place">Bas droit</div>
         </article>
       </section>
     </main>
 
     <script>
-      const MARKER_PX = 360;
-      const defs = [
-        { id: "qr-tl", text: "TL" },
-        { id: "qr-tr", text: "TR" },
-        { id: "qr-bl", text: "BL" },
-        { id: "qr-br", text: "BR" },
+      const statusEl = document.getElementById("render-status");
+      const MARKER_SIZE_PX = 360;
+      const DICT_NAME = "DICT_4X4_50";
+      const markerDefs = [
+        { canvasId: "aruco-0", id: 0 },
+        { canvasId: "aruco-1", id: 1 },
+        { canvasId: "aruco-2", id: 2 },
+        { canvasId: "aruco-3", id: 3 },
       ];
-
-      defs.forEach((m) => {
-        new QRCode(document.getElementById(m.id), {
-          text: m.text,
-          width: MARKER_PX,
-          height: MARKER_PX,
-          colorDark: "#000000",
-          colorLight: "#ffffff",
-          correctLevel: QRCode.CorrectLevel.M,
-        });
-      });
 
       document.getElementById("print-btn").addEventListener("click", () => {
         window.print();
       });
+
+      waitForOpenCv()
+        .then(renderAllMarkers)
+        .catch((err) => {
+          statusEl.textContent = `Erreur: ${String(err?.message || err)}`;
+        });
+
+      async function waitForOpenCv() {
+        if (window.cv && window.cv.Mat) return;
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("OpenCV non charge (timeout).")), 15000);
+          const check = () => {
+            if (window.cv && window.cv.Mat) {
+              clearTimeout(timeout);
+              resolve();
+            } else {
+              setTimeout(check, 100);
+            }
+          };
+          check();
+        });
+      }
+
+      function renderAllMarkers() {
+        const cvApi = window.cv;
+        if (!cvApi.aruco || typeof cvApi.aruco.getPredefinedDictionary !== "function") {
+          throw new Error("ArUco indisponible dans cette build OpenCV.js.");
+        }
+
+        const dictId = cvApi.aruco[DICT_NAME];
+        if (typeof dictId === "undefined") {
+          throw new Error(`Dictionnaire ArUco introuvable: ${DICT_NAME}`);
+        }
+        const dictionary = cvApi.aruco.getPredefinedDictionary(dictId);
+
+        markerDefs.forEach((def) => {
+          const marker = new cvApi.Mat();
+          cvApi.aruco.drawMarker(dictionary, def.id, MARKER_SIZE_PX, marker, 1);
+          cvApi.imshow(def.canvasId, marker);
+          marker.delete();
+        });
+
+        statusEl.textContent = "Marqueurs ArUco prets a imprimer.";
+      }
     </script>
   </body>
 </html>
