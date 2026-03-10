@@ -5,7 +5,7 @@ const MAT_WIDTH_M = 0.6;
 const MAT_HEIGHT_M = 0.35;
 const REQUIRED_IDS = [0, 1, 2, 3];
 const ASSUMED_FOV_DEG = 60;
-const MAX_SCAN_WIDTH = 960;
+const MAX_SCAN_WIDTH = 1600;
 
 const video = document.getElementById("camera");
 const threeCanvas = document.getElementById("three-canvas");
@@ -320,7 +320,8 @@ function loop() {
   frameIndex += 1;
   scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
   const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
-  if (frameIndex % 2 === 0) {
+  const scanEveryFrame = lastFoundMarkers.length < REQUIRED_IDS.length;
+  if (scanEveryFrame || frameIndex % 2 === 0) {
     lastFoundMarkers = detectAprilTags(imageData, scanScale);
     drawDebug(lastFoundMarkers);
     const pose = estimatePoseFromMarkers(lastFoundMarkers);

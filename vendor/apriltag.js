@@ -195,13 +195,14 @@ let detect = (mat, callback) => {
       try {
         if(hierarchy.row(0).col(i).data32S[3] < 0 && contour.data32S.length >= 8){
           let area = cv.contourArea(contour)
-          if (area > 400){
+          if (area > 120){
             let hull = new cv.Mat();
             try {
               cv.convexHull(contour, hull);
               if((area / cv.contourArea(hull)) > 0.8){
                 let quad = new cv.Mat();
-                cv.approxPolyDP(hull, quad, 8, true)
+                const epsilon = Math.max(2, cv.arcLength(hull, true) * 0.04);
+                cv.approxPolyDP(hull, quad, epsilon, true)
                 if(quad.data32S.length == 8){
                   let areaQuad = cv.contourArea(quad);
                   let areaHull = cv.contourArea(hull);
