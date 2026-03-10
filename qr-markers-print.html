@@ -220,23 +220,33 @@
       }
 
       function resolveArucoApi(cvApi) {
-        const ns = cvApi?.aruco || cvApi;
-        const constants = cvApi?.aruco || cvApi;
-        const getPredefinedDictionary = ns?.getPredefinedDictionary || cvApi?.getPredefinedDictionary;
-        const drawMarker =
-          ns?.drawMarker
-          || cvApi?.drawMarker
-          || ns?.generateImageMarker
-          || cvApi?.generateImageMarker;
-
-        if (typeof getPredefinedDictionary !== "function") {
-          throw new Error("ArUco indisponible: getPredefinedDictionary manquant.");
-        }
-        if (typeof drawMarker !== "function") {
-          throw new Error("ArUco indisponible: drawMarker/generateImageMarker manquant.");
+        // Legacy namespace API: cv.aruco.*
+        if (cvApi?.aruco && typeof cvApi.aruco.getPredefinedDictionary === "function") {
+          const drawFn = cvApi.aruco.drawMarker || cvApi.aruco.generateImageMarker;
+          if (typeof drawFn !== "function") {
+            throw new Error("ArUco indisponible: drawMarker/generateImageMarker manquant.");
+          }
+          return {
+            constants: cvApi.aruco,
+            getPredefinedDictionary: cvApi.aruco.getPredefinedDictionary.bind(cvApi.aruco),
+            drawMarker: drawFn.bind(cvApi.aruco),
+          };
         }
 
-        return { constants, getPredefinedDictionary, drawMarker };
+        // New API style: top-level symbols
+        if (typeof cvApi?.getPredefinedDictionary === "function") {
+          const drawFn = cvApi.drawMarker || cvApi.generateImageMarker;
+          if (typeof drawFn !== "function") {
+            throw new Error("ArUco indisponible: drawMarker/generateImageMarker manquant.");
+          }
+          return {
+            constants: cvApi,
+            getPredefinedDictionary: cvApi.getPredefinedDictionary.bind(cvApi),
+            drawMarker: drawFn.bind(cvApi),
+          };
+        }
+
+        throw new Error("ArUco indisponible: getPredefinedDictionary manquant.");
       }
     </script>
   </body>

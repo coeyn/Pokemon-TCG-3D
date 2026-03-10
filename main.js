@@ -163,31 +163,38 @@ function ensureArucoReady() {
 }
 
 function resolveArucoApi(cvApi) {
-  const ns = cvApi?.aruco || cvApi;
-  const constants = cvApi?.aruco || cvApi;
-  const getPredefinedDictionary = ns?.getPredefinedDictionary || cvApi?.getPredefinedDictionary;
-  const detectMarkers = ns?.detectMarkers || cvApi?.detectMarkers;
-  const ArucoDetector = cvApi?.ArucoDetector || ns?.ArucoDetector || null;
-  const createDetectorParameters =
-    ns?.DetectorParameters?.create
-    || cvApi?.DetectorParameters?.create
-    || (cvApi?.aruco_DetectorParameters ? (() => new cvApi.aruco_DetectorParameters()) : null)
-    || (cvApi?.DetectorParameters ? (() => new cvApi.DetectorParameters()) : null);
-
-  if (typeof getPredefinedDictionary !== "function") {
-    throw new Error("ArUco indisponible: getPredefinedDictionary manquant dans cette build OpenCV.js.");
-  }
-  if (typeof detectMarkers !== "function" && !ArucoDetector) {
-    throw new Error("ArUco indisponible: detectMarkers/ArucoDetector manquant.");
+  // Legacy namespace API: cv.aruco.*
+  if (cvApi?.aruco && typeof cvApi.aruco.getPredefinedDictionary === "function") {
+    const createDetectorParameters =
+      cvApi.aruco.DetectorParameters?.create
+      || (cvApi?.aruco_DetectorParameters ? (() => new cvApi.aruco_DetectorParameters()) : null);
+    return {
+      constants: cvApi.aruco,
+      getPredefinedDictionary: cvApi.aruco.getPredefinedDictionary.bind(cvApi.aruco),
+      detectMarkers: typeof cvApi.aruco.detectMarkers === "function" ? cvApi.aruco.detectMarkers.bind(cvApi.aruco) : null,
+      createDetectorParameters,
+      ArucoDetector: null,
+      mode: "namespace",
+    };
   }
 
-  return {
-    constants,
-    getPredefinedDictionary,
-    detectMarkers,
-    createDetectorParameters,
-    ArucoDetector,
-  };
+  // New API style: cv.getPredefinedDictionary + cv.ArucoDetector
+  if (typeof cvApi?.getPredefinedDictionary === "function" && cvApi?.ArucoDetector) {
+    const createDetectorParameters =
+      cvApi.DetectorParameters?.create
+      || (cvApi?.DetectorParameters ? (() => new cvApi.DetectorParameters()) : null)
+      || (cvApi?.aruco_DetectorParameters ? (() => new cvApi.aruco_DetectorParameters()) : null);
+    return {
+      constants: cvApi,
+      getPredefinedDictionary: cvApi.getPredefinedDictionary.bind(cvApi),
+      detectMarkers: null,
+      createDetectorParameters,
+      ArucoDetector: cvApi.ArucoDetector,
+      mode: "detector",
+    };
+  }
+
+  throw new Error("ArUco indisponible dans cette build OpenCV.js (API detectee incompatible).");
 }
 
 async function waitForOpenCv() {
@@ -387,13 +394,13 @@ function detectArucoMarkers(imageData, scale) {
   const ids = new cvApi.Mat();
   const rejected = new cvApi.MatVector();
   if (arucoDetector && typeof arucoDetector.detectMarkers === "function") {
-    arucoDetector.detectMarkers(gray, corners, ids, rejected);
-  } else {
     try {
-      arucoApi.detectMarkers(gray, arucoDictionary, corners, ids, arucoParams || undefined, rejected);
+      arucoDetector.detectMarkers(gray, corners, ids, rejected);
     } catch {
-      arucoApi.detectMarkers(gray, arucoDictionary, corners, ids);
+      arucoDetector.detectMarkers(gray, corners, ids);
     }
+  } else {
+    arucoApi.detectMarkers(gray, arucoDictionary, corners, ids, arucoParams || undefined, rejected);
   }
 
   for (let i = 0; i < ids.rows; i += 1) {
