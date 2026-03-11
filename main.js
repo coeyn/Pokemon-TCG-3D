@@ -70,6 +70,8 @@ let aprilTagReady = false;
 let modelMixer = null;
 const clock = new THREE.Clock();
 let runtimeErrorCount = 0;
+let detectionErrorStreak = 0;
+let detectionCooldownUntil = 0;
 
 function formatRuntimeError(err) {
   const raw = err?.message ?? err;
@@ -335,14 +337,20 @@ function loop() {
     if (modelMixer) modelMixer.update(delta);
 
     frameIndex += 1;
+    if (video.readyState < 2 || scanCanvas.width < 2 || scanCanvas.height < 2) {
+      return;
+    }
     scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
     const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
     const scanEveryFrame = lastFoundMarkers.length < REQUIRED_IDS.length;
     if (scanEveryFrame || frameIndex % 2 === 0) {
-      lastFoundMarkers = detectAprilTags(imageData, scanScale);
-      drawDebug(lastFoundMarkers);
-      const pose = estimatePoseFromMarkers(lastFoundMarkers);
-      applyPose(pose);
+      const now = performance.now();
+      if (now >= detectionCooldownUntil) {
+        lastFoundMarkers = detectAprilTags(imageData, scanScale);
+        drawDebug(lastFoundMarkers);
+        const pose = estimatePoseFromMarkers(lastFoundMarkers);
+        applyPose(pose);
+      }
     }
 
     const ids = lastFoundMarkers.map((f) => f.id).sort((a, b) => a - b).join(", ");
@@ -350,6 +358,11 @@ function loop() {
     runtimeErrorCount = 0;
   } catch (err) {
     runtimeErrorCount += 1;
+    detectionErrorStreak += 1;
+    if (detectionErrorStreak >= 10) {
+      detectionCooldownUntil = performance.now() + 1500;
+      detectionErrorStreak = 0;
+    }
     playmatAnchor.visible = false;
     lastFoundMarkers = [];
     if (runtimeErrorCount === 1 || runtimeErrorCount % 30 === 0) {
@@ -367,9 +380,12 @@ function detectAprilTags(imageData, scale) {
   const cvApi = window.cv;
   const out = [];
   const seenIds = new Set();
-  const rgba = cvApi.matFromImageData(imageData);
-  const rgb = new cvApi.Mat();
+  let rgba = null;
+  let rgb = null;
   try {
+    if (!imageData || imageData.width < 2 || imageData.height < 2) return out;
+    rgba = cvApi.matFromImageData(imageData);
+    rgb = new cvApi.Mat();
     cvApi.cvtColor(rgba, rgb, cvApi.COLOR_RGBA2RGB);
     window.apriltagDetect(rgb, (detections) => {
       for (const det of detections || []) {
@@ -386,11 +402,17 @@ function detectAprilTags(imageData, scale) {
         seenIds.add(markerId);
       }
     });
+    detectionErrorStreak = 0;
   } catch {
-    // Ignore unstable frames when the detector returns invalid point buffers.
+    detectionErrorStreak += 1;
+    if (detectionErrorStreak >= 10) {
+      detectionCooldownUntil = performance.now() + 1500;
+      detectionErrorStreak = 0;
+    }
+    return [];
   } finally {
-    rgba.delete();
-    rgb.delete();
+    if (rgba) rgba.delete();
+    if (rgb) rgb.delete();
   }
 
   return out;
