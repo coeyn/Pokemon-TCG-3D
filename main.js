@@ -67,6 +67,8 @@ let animationStarted = false;
 let currentStream = null;
 let scanScale = 1;
 let aprilTagReady = false;
+let modelMixer = null;
+const clock = new THREE.Clock();
 
 startBtn.addEventListener("click", async () => {
   await startOrRestartTracking();
@@ -316,6 +318,9 @@ function layoutMedia() {
 
 function loop() {
   if (!trackingReady) return;
+
+  const delta = clock.getDelta();
+  if (modelMixer) modelMixer.update(delta);
 
   frameIndex += 1;
   scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
@@ -582,9 +587,18 @@ function loadOptionalModel(parent, fallbackGroup) {
       candidatePaths[index],
       (gltf) => {
         const model = gltf.scene;
-        model.scale.setScalar(0.06);
+        model.scale.setScalar(0.18);
         model.position.set(MAT_WIDTH_M * 0.5, MAT_HEIGHT_M * 0.5, 0.0);
         parent.add(model);
+        if (Array.isArray(gltf.animations) && gltf.animations.length > 0) {
+          modelMixer = new THREE.AnimationMixer(model);
+          for (const clip of gltf.animations) {
+            const action = modelMixer.clipAction(clip);
+            action.reset();
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.play();
+          }
+        }
         if (fallbackGroup) fallbackGroup.visible = false;
         statusEl.textContent = "Etat: modele GLB charge + tracking actif";
       },

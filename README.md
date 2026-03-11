@@ -60,6 +60,7 @@ Tu peux changer ces valeurs dans [`main.js`](/c:/Users/coeyn/Documents/projet co
 Par defaut, un modele "placeholder" est affiche.
 
 Le chargeur essaie en priorite `brasegali.glb` a la racine, puis `assets/brasegali.glb`, puis `assets/pokemon.glb`.
+Le modele charge est agrandi (`x3` par rapport au preset precedent) et ses animations GLB sont lancees en boucle si presentes.
 
 ## Limitations actuelles
 
