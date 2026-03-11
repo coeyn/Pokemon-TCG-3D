@@ -169,7 +169,14 @@ async function ensureAprilTagReady() {
 
   aprilTagInitPromise = (async () => {
     const Apriltag = Comlink.wrap(new Worker("./vendor/apriltag_worker.js"));
-    const detector = await new Apriltag(Comlink.proxy(() => {}));
+    let readyResolve;
+    const readyPromise = new Promise((resolve) => {
+      readyResolve = resolve;
+    });
+    const detector = await new Apriltag(Comlink.proxy(() => {
+      if (readyResolve) readyResolve();
+    }));
+    await readyPromise;
     await detector.set_return_pose(0);
     await detector.set_return_solutions(0);
     await detector.set_max_detections(24);
