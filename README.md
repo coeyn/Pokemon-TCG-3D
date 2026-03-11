@@ -59,7 +59,7 @@ Tu peux changer ces valeurs dans [`main.js`](/c:/Users/coeyn/Documents/projet co
 
 Par defaut, un modele "placeholder" est affiche.
 
-Si tu ajoutes un fichier `assets/pokemon.glb`, il sera charge automatiquement et place sur le tapis.
+Le chargeur essaie en priorite `brasegali.glb` a la racine, puis `assets/brasegali.glb`, puis `assets/pokemon.glb`.
 
 ## Limitations actuelles
 

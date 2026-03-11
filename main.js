@@ -44,8 +44,8 @@ const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
 keyLight.position.set(2, 2.5, -1.5);
 scene.add(keyLight);
 
-addFallbackModel(playmatAnchor);
-loadOptionalModel(playmatAnchor);
+const fallbackModel = addFallbackModel(playmatAnchor);
+loadOptionalModel(playmatAnchor, fallbackModel);
 
 const cvToThree = new THREE.Matrix4().set(
   1, 0, 0, 0,
@@ -545,12 +545,13 @@ function updateProjectionFromIntrinsics(cam, fxVal, fyVal, cxVal, cyVal, width, 
 }
 
 function addFallbackModel(parent) {
+  const group = new THREE.Group();
   const body = new THREE.Mesh(
     new THREE.SphereGeometry(0.035, 32, 16),
     new THREE.MeshStandardMaterial({ color: 0xffd447, roughness: 0.45, metalness: 0.05 })
   );
   body.position.set(MAT_WIDTH_M * 0.5, MAT_HEIGHT_M * 0.5, 0.05);
-  parent.add(body);
+  group.add(body);
 
   const ears = new THREE.Mesh(
     new THREE.ConeGeometry(0.011, 0.03, 10),
@@ -558,25 +559,41 @@ function addFallbackModel(parent) {
   );
   ears.position.set(MAT_WIDTH_M * 0.5 + 0.02, MAT_HEIGHT_M * 0.5 + 0.015, 0.09);
   ears.rotation.x = Math.PI * 0.2;
-  parent.add(ears);
+  group.add(ears);
 
   const ears2 = ears.clone();
   ears2.position.x -= 0.04;
-  parent.add(ears2);
+  group.add(ears2);
+  parent.add(group);
+  return group;
 }
 
-function loadOptionalModel(parent) {
+function loadOptionalModel(parent, fallbackGroup) {
   const loader = new GLTFLoader();
-  loader.load(
+  const candidatePaths = [
+    "./brasegali.glb",
+    "./assets/brasegali.glb",
     "./assets/pokemon.glb",
-    (gltf) => {
-      const model = gltf.scene;
-      model.scale.setScalar(0.06);
-      model.position.set(MAT_WIDTH_M * 0.5, MAT_HEIGHT_M * 0.5, 0.02);
-      parent.add(model);
-      statusEl.textContent = "Etat: modele GLB charge + tracking actif";
-    },
-    undefined,
-    () => {}
-  );
+  ];
+
+  const tryLoad = (index) => {
+    if (index >= candidatePaths.length) return;
+    loader.load(
+      candidatePaths[index],
+      (gltf) => {
+        const model = gltf.scene;
+        model.scale.setScalar(0.06);
+        model.position.set(MAT_WIDTH_M * 0.5, MAT_HEIGHT_M * 0.5, 0.0);
+        parent.add(model);
+        if (fallbackGroup) fallbackGroup.visible = false;
+        statusEl.textContent = "Etat: modele GLB charge + tracking actif";
+      },
+      undefined,
+      () => {
+        tryLoad(index + 1);
+      }
+    );
+  };
+
+  tryLoad(0);
 }
