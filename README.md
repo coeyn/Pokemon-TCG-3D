@@ -65,5 +65,5 @@ Le modele charge est agrandi (`x3` par rapport au preset precedent) et ses anima
 ## Limitations actuelles
 
 - intrinseques camera approximees (FOV fixe) -> leger decalage possible
-- detection AprilTag basee sur l'implementation JS locale (`vendor/apriltag.js`)
+- detection AprilTag via detecteur WASM en WebWorker (`vendor/apriltag_worker.js` + `vendor/apriltag_wasm.*`)
 - pas encore de suivi NFC/RFID des cartes (etape suivante)

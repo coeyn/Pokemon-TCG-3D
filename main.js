@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import * as Comlink from "https://unpkg.com/comlink/dist/esm/comlink.mjs";
 
 const MAT_WIDTH_M = 0.6;
 const MAT_HEIGHT_M = 0.35;
@@ -72,6 +73,9 @@ const clock = new THREE.Clock();
 let runtimeErrorCount = 0;
 let detectionErrorStreak = 0;
 let detectionCooldownUntil = 0;
+let aprilTagDetector = null;
+let aprilTagInitPromise = null;
+let detectionInFlight = false;
 
 function formatRuntimeError(err) {
   const raw = err?.message ?? err;
@@ -125,7 +129,7 @@ async function startOrRestartTracking() {
   try {
     ensureCameraPrerequisites();
     await waitForOpenCv();
-    ensureAprilTagReady();
+    await ensureAprilTagReady();
     await startCamera(cameraSelect.value || null);
     setupAfterVideoReady();
     const count = await populateCameraSelect();
@@ -156,12 +160,24 @@ function ensureCameraPrerequisites() {
   }
 }
 
-function ensureAprilTagReady() {
-  if (aprilTagReady) return;
-  if (typeof window.apriltagDetect !== "function") {
-    throw new Error("AprilTag indisponible: script vendor/apriltag.js non charge.");
+async function ensureAprilTagReady() {
+  if (aprilTagReady && aprilTagDetector) return;
+  if (aprilTagInitPromise) {
+    await aprilTagInitPromise;
+    return;
   }
-  aprilTagReady = true;
+
+  aprilTagInitPromise = (async () => {
+    const Apriltag = Comlink.wrap(new Worker("./vendor/apriltag_worker.js"));
+    const detector = await new Apriltag(Comlink.proxy(() => {}));
+    await detector.set_return_pose(0);
+    await detector.set_return_solutions(0);
+    await detector.set_max_detections(24);
+    aprilTagDetector = detector;
+    aprilTagReady = true;
+  })();
+
+  await aprilTagInitPromise;
 }
 
 async function waitForOpenCv() {
@@ -293,6 +309,9 @@ function setupAfterVideoReady() {
   fy = fx;
   cx = videoWidth * 0.5;
   cy = videoHeight * 0.5;
+  if (aprilTagDetector) {
+    aprilTagDetector.set_camera_info(fx, fy, cx, cy).catch(() => {});
+  }
 
   updateProjectionFromIntrinsics(camera, fx, fy, cx, cy, videoWidth, videoHeight, 0.01, 20);
   layoutMedia();
@@ -345,11 +364,28 @@ function loop() {
     const scanEveryFrame = lastFoundMarkers.length < REQUIRED_IDS.length;
     if (scanEveryFrame || frameIndex % 2 === 0) {
       const now = performance.now();
-      if (now >= detectionCooldownUntil) {
-        lastFoundMarkers = detectAprilTags(imageData, scanScale);
-        drawDebug(lastFoundMarkers);
-        const pose = estimatePoseFromMarkers(lastFoundMarkers);
-        applyPose(pose);
+      if (now >= detectionCooldownUntil && !detectionInFlight) {
+        detectionInFlight = true;
+        detectAprilTagsAsync(imageData, scanScale)
+          .then((markers) => {
+            lastFoundMarkers = markers;
+            drawDebug(lastFoundMarkers);
+            const pose = estimatePoseFromMarkers(lastFoundMarkers);
+            applyPose(pose);
+            detectionErrorStreak = 0;
+          })
+          .catch(() => {
+            detectionErrorStreak += 1;
+            if (detectionErrorStreak >= 10) {
+              detectionCooldownUntil = performance.now() + 1500;
+              detectionErrorStreak = 0;
+            }
+            lastFoundMarkers = [];
+            playmatAnchor.visible = false;
+          })
+          .finally(() => {
+            detectionInFlight = false;
+          });
       }
     }
 
@@ -376,53 +412,45 @@ function loop() {
   }
 }
 
-function detectAprilTags(imageData, scale) {
-  const cvApi = window.cv;
+async function detectAprilTagsAsync(imageData, scale) {
   const out = [];
   const seenIds = new Set();
-  let rgba = null;
-  let rgb = null;
   try {
-    if (!imageData || imageData.width < 2 || imageData.height < 2) return out;
-    rgba = cvApi.matFromImageData(imageData);
-    rgb = new cvApi.Mat();
-    cvApi.cvtColor(rgba, rgb, cvApi.COLOR_RGBA2RGB);
-    window.apriltagDetect(rgb, (detections) => {
-      for (const det of detections || []) {
-        if (!det || !det.points) continue;
-        const markerId = Number(det.id);
-        if (!Number.isInteger(markerId) || !REQUIRED_IDS.includes(markerId) || seenIds.has(markerId)) continue;
-        const originalLocation = scaleQuadToLocation(det.points, scale);
-        if (!originalLocation) continue;
-        out.push({
-          id: markerId,
-          center: averageCorners(originalLocation),
-          location: originalLocation,
-        });
-        seenIds.add(markerId);
-      }
-    });
-    detectionErrorStreak = 0;
-  } catch {
-    detectionErrorStreak += 1;
-    if (detectionErrorStreak >= 10) {
-      detectionCooldownUntil = performance.now() + 1500;
-      detectionErrorStreak = 0;
+    if (!aprilTagDetector || !imageData || imageData.width < 2 || imageData.height < 2) return out;
+    const grayscale = rgbaToGray(imageData.data, imageData.width * imageData.height);
+    const detections = await aprilTagDetector.detect(grayscale, imageData.width, imageData.height);
+    for (const det of detections || []) {
+      if (!det || !det.corners || det.corners.length < 4) continue;
+      const markerId = Number(det.id);
+      if (!Number.isInteger(markerId) || !REQUIRED_IDS.includes(markerId) || seenIds.has(markerId)) continue;
+      const originalLocation = cornersToLocation(det.corners, scale);
+      if (!originalLocation) continue;
+      out.push({
+        id: markerId,
+        center: averageCorners(originalLocation),
+        location: originalLocation,
+      });
+      seenIds.add(markerId);
     }
+    return out;
+  } catch {
     return [];
-  } finally {
-    if (rgba) rgba.delete();
-    if (rgb) rgb.delete();
   }
-
-  return out;
 }
 
-function scaleQuadToLocation(pointsMat, scale) {
-  if (!pointsMat || !Array.isArray(pointsMat) || pointsMat.length < 4) return null;
-  const pts = pointsMat.map((pair) => {
-    if (!Array.isArray(pair) || pair.length < 2) return null;
-    return { x: Number(pair[0]), y: Number(pair[1]) };
+function rgbaToGray(rgbaData, pixelCount) {
+  const gray = new Uint8Array(pixelCount);
+  for (let i = 0, j = 0; j < pixelCount; i += 4, j += 1) {
+    gray[j] = (rgbaData[i] + rgbaData[i + 1] + rgbaData[i + 2]) / 3;
+  }
+  return gray;
+}
+
+function cornersToLocation(corners, scale) {
+  if (!corners || !Array.isArray(corners) || corners.length < 4) return null;
+  const pts = corners.map((c) => {
+    if (typeof c?.x !== "number" || typeof c?.y !== "number") return null;
+    return { x: c.x, y: c.y };
   }).filter(Boolean);
   if (pts.length < 4) return null;
   const ordered = orderCornersClockwise(pts);
