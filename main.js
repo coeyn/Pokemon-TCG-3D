@@ -71,6 +71,16 @@ let modelMixer = null;
 const clock = new THREE.Clock();
 let runtimeErrorCount = 0;
 
+function formatRuntimeError(err) {
+  const raw = err?.message ?? err;
+  if (typeof raw === "number") {
+    return "Erreur OpenCV frame (ignoree)";
+  }
+  const text = String(raw || "inconnue");
+  if (/^\d+$/.test(text)) return "Erreur OpenCV frame (ignoree)";
+  return text;
+}
+
 startBtn.addEventListener("click", async () => {
   await startOrRestartTracking();
 });
@@ -343,7 +353,7 @@ function loop() {
     playmatAnchor.visible = false;
     lastFoundMarkers = [];
     if (runtimeErrorCount === 1 || runtimeErrorCount % 30 === 0) {
-      const msg = String(err?.message || err || "inconnue");
+      const msg = formatRuntimeError(err);
       statusEl.textContent = `Erreur runtime (frame ignoree): ${msg}`;
       console.error(err);
     }

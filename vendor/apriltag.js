@@ -1,4 +1,12 @@
 const average = arr => arr.reduce((a,b) => a + b, 0) / arr.length;
+const isValidPixel = (point, gray) => (
+  Number.isFinite(point[0])
+  && Number.isFinite(point[1])
+  && point[0] >= 0
+  && point[1] >= 0
+  && point[0] < gray.rows
+  && point[1] < gray.cols
+);
 
 let interpolate = (p, relativePoint) => {
   let tmp0 = p.row(1).col(0).data32S[0] * p.row(2).col(0).data32S[1]
@@ -129,7 +137,7 @@ let decodeQuad = (quads, gray) => {
         let point = interpolate(quad, [x, y]);
         point[0] = parseInt(point[0]);
         point[1] = parseInt(point[1]);
-        if (point[0] < 0 || point[1] < 0 || point[0] >= gray.rows || point[1] >= gray.cols) {
+        if (!isValidPixel(point, gray)) {
           continue;
         }
         points.push(point);
@@ -142,7 +150,15 @@ let decodeQuad = (quads, gray) => {
           continue
       }
     }
+    if (blackValue.length === 0 || whiteValue.length === 0) {
+      quad.delete();
+      continue;
+    }
     let threshold = (average(blackValue) + average(whiteValue)) / 2;
+    if (!Number.isFinite(threshold)) {
+      quad.delete();
+      continue;
+    }
     for(let iy = 0; iy < dd; iy++){
       for(let ix = 0; ix < dd; ix++){
         if ((iy == 0 || iy == dd - 1) || (ix == 0 || ix == dd - 1))
@@ -152,7 +168,7 @@ let decodeQuad = (quads, gray) => {
         let point = interpolate(quad, [x, y]);
         point[0] = parseInt(point[0]);
         point[1] = parseInt(point[1]);
-        if (point[0] < 0 || point[1] < 0 || point[0] >= gray.rows || point[1] >= gray.cols) {
+        if (!isValidPixel(point, gray)) {
           continue;
         }
         let value = gray.row(point[0]).col(point[1]).data[0];
@@ -223,6 +239,9 @@ let detect = (mat, callback) => {
     // 5 - Decode Quadrilaterals
     let detections = decodeQuad(quads, gray);
     callback(detections);
+  } catch {
+    // When OpenCV throws numeric exceptions on unstable frames, return no detections.
+    callback([]);
   } finally {
     gray.delete();
     img.delete();
