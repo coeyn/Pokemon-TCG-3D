@@ -62,7 +62,7 @@ let decode = (tagCode, points) => {
   let bestHamming = 255;
   let bestRotation = -1;
   let bestCode = -1;
-  rCodes = tagCode;
+  let rCodes = tagCode;
   
   for(let r = 0; r < 4; r++){
     let index = 0;
@@ -78,7 +78,7 @@ let decode = (tagCode, points) => {
     });
     rCodes = rotate(rCodes, 6);
   }
-  tagDetection = {};
+  const tagDetection = {};
   tagDetection.id = bestId;
   tagDetection.hammingDistance = bestHamming;
   tagDetection.obsCode = tagCode;
@@ -176,7 +176,7 @@ let detect = (mat, callback) => {
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   let quads = new cv.MatVector();
-  let M = new cv.Mat();
+  let M = null;
   try {
     cv.cvtColor(mat, gray, cv.COLOR_RGB2GRAY);
     // 1 - Blur 
@@ -229,7 +229,7 @@ let detect = (mat, callback) => {
     contours.delete();
     hierarchy.delete();
     quads.delete();
-    M.delete();
+    if (M) M.delete();
   }
 }; 
 

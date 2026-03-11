@@ -69,6 +69,7 @@ let scanScale = 1;
 let aprilTagReady = false;
 let modelMixer = null;
 const clock = new THREE.Clock();
+let runtimeErrorCount = 0;
 
 startBtn.addEventListener("click", async () => {
   await startOrRestartTracking();
@@ -319,25 +320,37 @@ function layoutMedia() {
 function loop() {
   if (!trackingReady) return;
 
-  const delta = clock.getDelta();
-  if (modelMixer) modelMixer.update(delta);
+  try {
+    const delta = clock.getDelta();
+    if (modelMixer) modelMixer.update(delta);
 
-  frameIndex += 1;
-  scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
-  const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
-  const scanEveryFrame = lastFoundMarkers.length < REQUIRED_IDS.length;
-  if (scanEveryFrame || frameIndex % 2 === 0) {
-    lastFoundMarkers = detectAprilTags(imageData, scanScale);
-    drawDebug(lastFoundMarkers);
-    const pose = estimatePoseFromMarkers(lastFoundMarkers);
-    applyPose(pose);
+    frameIndex += 1;
+    scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
+    const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+    const scanEveryFrame = lastFoundMarkers.length < REQUIRED_IDS.length;
+    if (scanEveryFrame || frameIndex % 2 === 0) {
+      lastFoundMarkers = detectAprilTags(imageData, scanScale);
+      drawDebug(lastFoundMarkers);
+      const pose = estimatePoseFromMarkers(lastFoundMarkers);
+      applyPose(pose);
+    }
+
+    const ids = lastFoundMarkers.map((f) => f.id).sort((a, b) => a - b).join(", ");
+    qrStatusEl.textContent = `AprilTag detectes: ${ids || "aucun"}`;
+    runtimeErrorCount = 0;
+  } catch (err) {
+    runtimeErrorCount += 1;
+    playmatAnchor.visible = false;
+    lastFoundMarkers = [];
+    if (runtimeErrorCount === 1 || runtimeErrorCount % 30 === 0) {
+      const msg = String(err?.message || err || "inconnue");
+      statusEl.textContent = `Erreur runtime (frame ignoree): ${msg}`;
+      console.error(err);
+    }
+  } finally {
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
   }
-
-  const ids = lastFoundMarkers.map((f) => f.id).sort((a, b) => a - b).join(", ");
-  qrStatusEl.textContent = `AprilTag detectes: ${ids || "aucun"}`;
-
-  renderer.render(scene, camera);
-  requestAnimationFrame(loop);
 }
 
 function detectAprilTags(imageData, scale) {
@@ -346,9 +359,8 @@ function detectAprilTags(imageData, scale) {
   const seenIds = new Set();
   const rgba = cvApi.matFromImageData(imageData);
   const rgb = new cvApi.Mat();
-  cvApi.cvtColor(rgba, rgb, cvApi.COLOR_RGBA2RGB);
-
   try {
+    cvApi.cvtColor(rgba, rgb, cvApi.COLOR_RGBA2RGB);
     window.apriltagDetect(rgb, (detections) => {
       for (const det of detections || []) {
         if (!det || !det.points) continue;
@@ -366,10 +378,10 @@ function detectAprilTags(imageData, scale) {
     });
   } catch {
     // Ignore unstable frames when the detector returns invalid point buffers.
+  } finally {
+    rgba.delete();
+    rgb.delete();
   }
-
-  rgba.delete();
-  rgb.delete();
 
   return out;
 }
@@ -441,65 +453,69 @@ function estimatePoseFromMarkers(foundMarkers) {
     { x: 0, y: MAT_HEIGHT_M, z: 0 },
   ];
 
-  const objectPoints = cvApi.matFromArray(
-    4,
-    1,
-    cvApi.CV_32FC3,
-    worldPts.flatMap((p) => [p.x, p.y, p.z])
-  );
-  const imagePoints = cvApi.matFromArray(
-    4,
-    1,
-    cvApi.CV_32FC2,
-    imagePts.flatMap((p) => [p.x, p.y])
-  );
-  const cameraMatrix = cvApi.matFromArray(
-    3,
-    3,
-    cvApi.CV_64FC1,
-    [fx, 0, cx, 0, fy, cy, 0, 0, 1]
-  );
-  const distCoeffs = cvApi.Mat.zeros(4, 1, cvApi.CV_64FC1);
-  const rvec = new cvApi.Mat();
-  const tvec = new cvApi.Mat();
+  let objectPoints;
+  let imagePoints;
+  let cameraMatrix;
+  let distCoeffs;
+  let rvec;
+  let tvec;
+  let rmat;
+  try {
+    objectPoints = cvApi.matFromArray(
+      4,
+      1,
+      cvApi.CV_32FC3,
+      worldPts.flatMap((p) => [p.x, p.y, p.z])
+    );
+    imagePoints = cvApi.matFromArray(
+      4,
+      1,
+      cvApi.CV_32FC2,
+      imagePts.flatMap((p) => [p.x, p.y])
+    );
+    cameraMatrix = cvApi.matFromArray(
+      3,
+      3,
+      cvApi.CV_64FC1,
+      [fx, 0, cx, 0, fy, cy, 0, 0, 1]
+    );
+    distCoeffs = cvApi.Mat.zeros(4, 1, cvApi.CV_64FC1);
+    rvec = new cvApi.Mat();
+    tvec = new cvApi.Mat();
 
-  const ok = cvApi.solvePnP(
-    objectPoints,
-    imagePoints,
-    cameraMatrix,
-    distCoeffs,
-    rvec,
-    tvec,
-    false,
-    cvApi.SOLVEPNP_ITERATIVE
-  );
+    const ok = cvApi.solvePnP(
+      objectPoints,
+      imagePoints,
+      cameraMatrix,
+      distCoeffs,
+      rvec,
+      tvec,
+      false,
+      cvApi.SOLVEPNP_ITERATIVE
+    );
+    if (!ok) return null;
 
-  objectPoints.delete();
-  imagePoints.delete();
-  cameraMatrix.delete();
-  distCoeffs.delete();
+    rmat = new cvApi.Mat();
+    cvApi.Rodrigues(rvec, rmat);
 
-  if (!ok) {
-    rvec.delete();
-    tvec.delete();
+    const mCv = new THREE.Matrix4().set(
+      rmat.doubleAt(0, 0), rmat.doubleAt(0, 1), rmat.doubleAt(0, 2), tvec.doubleAt(0, 0),
+      rmat.doubleAt(1, 0), rmat.doubleAt(1, 1), rmat.doubleAt(1, 2), tvec.doubleAt(1, 0),
+      rmat.doubleAt(2, 0), rmat.doubleAt(2, 1), rmat.doubleAt(2, 2), tvec.doubleAt(2, 0),
+      0, 0, 0, 1
+    );
+    return cvToThree.clone().multiply(mCv);
+  } catch {
     return null;
+  } finally {
+    if (objectPoints) objectPoints.delete();
+    if (imagePoints) imagePoints.delete();
+    if (cameraMatrix) cameraMatrix.delete();
+    if (distCoeffs) distCoeffs.delete();
+    if (rvec) rvec.delete();
+    if (tvec) tvec.delete();
+    if (rmat) rmat.delete();
   }
-
-  const rmat = new cvApi.Mat();
-  cvApi.Rodrigues(rvec, rmat);
-
-  const mCv = new THREE.Matrix4().set(
-    rmat.doubleAt(0, 0), rmat.doubleAt(0, 1), rmat.doubleAt(0, 2), tvec.doubleAt(0, 0),
-    rmat.doubleAt(1, 0), rmat.doubleAt(1, 1), rmat.doubleAt(1, 2), tvec.doubleAt(1, 0),
-    rmat.doubleAt(2, 0), rmat.doubleAt(2, 1), rmat.doubleAt(2, 2), tvec.doubleAt(2, 0),
-    0, 0, 0, 1
-  );
-
-  rvec.delete();
-  tvec.delete();
-  rmat.delete();
-
-  return cvToThree.clone().multiply(mCv);
 }
 
 function applyPose(matrixWorldToCamera) {
